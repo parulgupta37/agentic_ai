@@ -109,7 +109,7 @@ email_graph.add_node("response_for_email", response_for_email)
 email_graph.add_edge(START, "read_email_urgency")
 email_graph.add_edge("read_email_urgency", "read_email_topic")
 email_graph.add_conditional_edges("read_email_topic",check_if_critical,{"PASS": "human_response","FAIL":"response_for_email"})
-email_graph.add_edge("read_email_topic", "response_for_email")
+email_graph.add_edge("human_response", END)
 email_graph.add_edge("response_for_email", END)
 
 email_graph = email_graph.compile()
@@ -121,7 +121,7 @@ with open("email_graph_ai.png", "wb") as f:
 
 initial_state = {
     "email_sender": "Parul",
-    "email_cntnt": "complex error",
+    "email_cntnt": "password error",
     "email_classify_urg": "",
     "email_classify_category": "",
     "response_email": "",
