@@ -1,0 +1,138 @@
+from langchain_ollama import ChatOllama
+from typing_extensions import TypedDict
+from langgraph.graph import StateGraph, START, END
+from datetime import datetime
+
+llm = ChatOllama(model="qwen3:0.6b")
+
+# read email and determine category###
+class State(TypedDict):
+    email_cntnt: str
+    email_sender: str
+    email_classify_urg: str
+    email_classify_category: str
+    response_email: str
+    manual_help: str
+    date_time: str
+
+
+
+# Topic Urgency Classification
+
+def read_email_urgency(state: State):
+    """Classify urgency based on keywords."""
+    content = state["email_cntnt"].lower()
+
+    if "urgent" in content or "asap" in content or "immediately" in content:
+        state["email_classify_urg"] = "High"
+    elif "soon" in content or "medium" in content:
+        state["email_classify_urg"] = "Medium"
+    else:
+        state["email_classify_urg"] = "Low"
+
+    return state
+
+
+
+# Node : Topic Classification
+
+def read_email_topic(state: State):
+    """Classify email topic based on keywords."""
+    content = state["email_cntnt"].lower()
+
+    if "bug" in content or "error" in content or "issue" in content:
+        state["email_classify_category"] = "Bug / Error"
+    elif "technical" in content or "server" in content or "database" in content:
+        state["email_classify_category"] = "Technical"
+    elif "bill" in content or "invoice" in content or "account" in content:
+        state["email_classify_category"] = "Billing"
+    elif "new" in content or "feature" in content or "request" in content:
+        state["email_classify_category"] = "Feature Request"
+    elif "password" in content or "login" in content or "reset" in content:
+        state["email_classify_category"] = "Password / Access"
+    elif "complex" in content or "techincal" in content:
+        state["email_classify_category"] = "complex technical issue"
+    else:
+        state["email_classify_category"] = "Other"
+
+    return state
+
+def check_if_critical(state: State):
+     """gate to check whether issue cannot be fixed by agent"""
+     if "complex technical issue" in state["email_classify_category"] :
+         return "PASS"
+     return "FAIL"
+
+def human_response(state: State):
+     """return to manual fix"""
+     print(" sending to human for check")
+
+
+
+
+# Node : Generate Response Email
+
+def response_for_email(state: State):
+    """Generate a helpful, polite response email."""
+    prompt = f"""
+You are an AI support assistant. Write a clear, polite, and helpful email response.
+
+Details:
+- Sender: {state['email_sender']}
+- Date: {state['date_time']}
+- Urgency: {state['email_classify_urg']}
+- Category: {state['email_classify_category']}
+- User's email content: "{state['email_cntnt']}"
+
+Write a short, professional email that:
+1. Acknowledges the user's request
+2. Mentions the urgency/category appropriately
+3. Provides steps or guidance based on the issue
+4. Sounds human and friendly
+"""
+
+    response = llm.invoke(prompt)
+    state["response_email"] = response.content
+    return state
+
+
+# -----------------------------
+# Build Graph
+# -----------------------------
+email_graph = StateGraph(State)
+
+email_graph.add_node("read_email_urgency", read_email_urgency)
+email_graph.add_node("read_email_topic", read_email_topic)
+email_graph.add_node("human_response", human_response)
+email_graph.add_node("response_for_email", response_for_email)
+
+email_graph.add_edge(START, "read_email_urgency")
+email_graph.add_edge("read_email_urgency", "read_email_topic")
+email_graph.add_conditional_edges("read_email_topic",check_if_critical,{"PASS": "human_response","FAIL":"response_for_email"})
+email_graph.add_edge("read_email_topic", "response_for_email")
+email_graph.add_edge("response_for_email", END)
+
+email_graph = email_graph.compile()
+
+graph_png = email_graph.get_graph(xray=True).draw_mermaid_png()
+with open("email_graph_ai.png", "wb") as f:
+    f.write(graph_png)
+
+
+initial_state = {
+    "email_sender": "Parul",
+    "email_cntnt": "complex error",
+    "email_classify_urg": "",
+    "email_classify_category": "",
+    "response_email": "",
+    "manual_help": "",
+    "date_time": datetime.now().strftime("%Y-%m-%d")
+}
+
+result = email_graph.invoke(initial_state)
+
+print(result)
+print("user email:", result["email_cntnt"])
+print("urgency_Category:", result["email_classify_urg"])
+print("topic category:", result["email_classify_category"])
+print("topic category:", result["response_email"])
